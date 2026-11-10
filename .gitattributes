@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve the exact official bytes: metadata includes a SHA-256 checksum.
+data/*.csv -text

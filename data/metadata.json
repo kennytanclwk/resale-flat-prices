@@ -1,0 +1,11 @@
+{
+  "name": "HDB resale flat prices · January 2017 onwards",
+  "url": "https://data.gov.sg/datasets/d_8b84c4ee58e3cfc0ece0d773c8ca6abc/view",
+  "datasetId": "d_8b84c4ee58e3cfc0ece0d773c8ca6abc",
+  "retrievedAt": "2026-11-10T10:36:06.213Z",
+  "coverageStart": "2017-01",
+  "coverageEnd": "2026-11",
+  "mode": "snapshot",
+  "recordCount": 244312,
+  "sha256": "f97751df1909307738be046227c0630df89b4279be3bf4f6d0c23156fbb23260"
+}

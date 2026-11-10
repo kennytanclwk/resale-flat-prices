@@ -1,0 +1,14 @@
+aws_region    = "ap-southeast-1"
+project_name  = "hdb-lens"
+image_tag     = "assessment-v1"
+desired_count = 1
+cpu           = 512
+memory        = 2048
+
+# For an internet deployment, supply a validated regional ACM certificate and
+# point its domain at the ALB. HTTP then redirects to HTTPS.
+# certificate_arn = "arn:aws:acm:ap-southeast-1:123456789012:certificate/your-certificate-id"
+# domain_name     = "hdb.example.com"
+
+# Optionally restrict access to reviewer IPv4 ranges.
+# allowed_ingress_cidrs = ["203.0.113.10/32"]

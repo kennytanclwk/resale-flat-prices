@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+.tools/
+.qa/
+dist/
+coverage/
+data/*.csv
+pnpm-lock.yaml
+infra/.terraform/
+infra/.terraform.lock.hcl
