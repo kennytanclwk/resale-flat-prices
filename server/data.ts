@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import type { Metadata, SourceMetadata, Transaction } from '../shared/types.js';
+import { indexMonth, monthIndex, singaporeMonth } from '../shared/months.js';
 
 export const DATASET_ID = 'd_8b84c4ee58e3cfc0ece0d773c8ca6abc';
 export const SOURCE_URL = `https://data.gov.sg/datasets/${DATASET_ID}/view`;
@@ -66,6 +67,8 @@ export function createRepository(
   const months = records.map((row) => row.month).sort();
   const minMonth = months[0];
   const maxMonth = months[months.length - 1];
+  const lastClosedMonth = indexMonth(monthIndex(singaporeMonth(source.retrievedAt)) - 1);
+  const lastCoveredMonth = maxMonth < lastClosedMonth ? maxMonth : lastClosedMonth;
   return {
     records,
     meta: {
@@ -73,6 +76,7 @@ export function createRepository(
       flatTypes: [...new Set(records.map((row) => row.flatType))].sort(),
       minMonth,
       maxMonth,
+      latestCompleteMonth: lastCoveredMonth >= minMonth ? lastCoveredMonth : null,
       totalRecords: records.length,
       source: { ...source, coverageStart: minMonth, coverageEnd: maxMonth, mode: 'snapshot' },
     },

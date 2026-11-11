@@ -457,6 +457,42 @@ h1 > span {
   opacity: 0.55;
   pointer-events: none;
 }
+.coverage-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 17px;
+  margin-bottom: 18px;
+  border: 1px solid #dde8d8;
+  border-radius: 8px;
+  background: #eef4e9;
+  color: #6b8364;
+}
+.coverage-note p {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.coverage-note .text-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 11px;
+}
+@media (max-width: 560px) {
+  .coverage-note {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+  }
+  .coverage-note p {
+    min-width: 80%;
+    font-size: 10px;
+  }
+  .coverage-note .text-button {
+    margin-left: 25px;
+  }
+}
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

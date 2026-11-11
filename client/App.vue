@@ -7,7 +7,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   Building2,
-  CalendarDays,
   ChartNoAxesCombined,
   Check,
   ChevronDown,
@@ -23,11 +22,12 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
-  TrendingUp,
   X,
 } from 'lucide-vue-next';
 import PriceTrend from './components/PriceTrend.vue';
 import TownComparison from './components/TownComparison.vue';
+import PriceDistribution from './components/PriceDistribution.vue';
+import { indexMonth, monthIndex } from '../shared/months';
 import { getJson } from './lib/api';
 import { integer, money, monthLabel, shiftMonth, titleCase } from './lib/format';
 import type { Dashboard, Metadata as Meta, Transaction } from '../shared/types';
@@ -71,6 +71,20 @@ const sourceDate = computed(() =>
 );
 const periodLabel = computed(() => `${monthLabel(filters.from)} – ${monthLabel(filters.to)}`);
 const summary = computed(() => dashboard.value?.summary);
+const comparisonExplanation = computed(() => {
+  switch (summary.value?.comparisonUnavailableReason) {
+    case 'no_transactions':
+      return 'No matching transactions';
+    case 'incomplete_month':
+      return 'Latest month is incomplete';
+    case 'insufficient_coverage':
+      return 'Prior period outside data coverage';
+    case 'no_prior_transactions':
+      return 'No matching prior-period transactions';
+    default:
+      return summary.value?.count ? 'No comparable prior period' : 'No matching transactions';
+  }
+});
 const activeFilters = computed(() =>
   Boolean(
     filters.town || filters.flatType || filters.search || filters.minPrice || filters.maxPrice,
@@ -182,6 +196,14 @@ function setPeriod(months: number) {
     months === 0
       ? meta.value.minMonth
       : [meta.value.minMonth, shiftMonth(filters.to, -(months - 1))].sort().at(-1)!;
+  void load(true);
+}
+function useCompleteMonths() {
+  const latest = meta.value?.latestCompleteMonth;
+  if (!latest) return;
+  const length = monthIndex(filters.to) - monthIndex(filters.from) + 1;
+  filters.to = latest;
+  filters.from = [meta.value!.minMonth, indexMonth(monthIndex(latest) - length + 1)].sort().at(-1)!;
   void load(true);
 }
 function isPeriod(months: number) {
@@ -516,6 +538,22 @@ onUnmounted(() => {
       :class="{ refreshing: loading }"
       :aria-busy="loading"
     >
+      <div
+        v-if="summary?.comparisonUnavailableReason === 'incomplete_month'"
+        class="coverage-note"
+        role="note"
+        aria-label="Data coverage"
+      >
+        <Info :size="17" />
+        <p>
+          Your selection includes a month that was still in progress when this snapshot was
+          retrieved. Price comparisons are hidden to avoid comparing a partial month with a full
+          month.
+        </p>
+        <button v-if="meta?.latestCompleteMonth" class="text-button" @click="useCompleteMonths">
+          Use complete months <ArrowRight :size="13" />
+        </button>
+      </div>
       <div class="metrics-grid">
         <article class="metric-card">
           <div class="metric-top">
@@ -540,7 +578,7 @@ onUnmounted(() => {
             ></span>
           </div>
           <p v-else class="metric-caption">
-            {{ summary?.count ? 'No comparable prior period' : 'No matching transactions' }}
+            {{ comparisonExplanation }}
           </p>
         </article>
         <article class="metric-card">
@@ -631,6 +669,10 @@ onUnmounted(() => {
             </div>
           </section>
         </div>
+        <PriceDistribution
+          :distribution="dashboard.summary.priceDistribution"
+          :count="dashboard.summary.count"
+        />
         <section class="insight-strip">
           <span class="insight-icon"><Sparkles :size="20" /></span>
           <div>
@@ -909,6 +951,13 @@ onUnmounted(() => {
           </div>
           <div class="method-section">
             <h3>How the numbers are calculated</h3>
+            <p>
+              The price distribution shows the minimum, 25th percentile, median, 75th percentile,
+              and maximum across every matching transaction. Quartiles use linear interpolation at
+              (n − 1) × p in the sorted prices, so a percentile may lie between observed sale
+              prices. The shaded box marks the middle 50%; groups with fewer than 30 transactions
+              are labelled as small samples.
+            </p>
             <p>
               The median is the middle transaction price, or the average of the two middle prices.
               Price per m² is calculated for each transaction before taking the median.

@@ -2,12 +2,14 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
+import type { Dashboard, Metadata } from '../shared/types';
 
-const meta = {
+const meta: Metadata = {
   towns: ['BEDOK', 'BISHAN'],
   flatTypes: ['3 ROOM', '4 ROOM'],
   minMonth: '2017-01',
   maxMonth: '2025-12',
+  latestCompleteMonth: '2025-12',
   totalRecords: 240_000,
   source: {
     name: 'HDB resale prices',
@@ -34,7 +36,7 @@ const transaction = {
   resalePrice: 600_000,
   pricePerSqm: 6_000,
 };
-const dashboard = {
+const dashboard: Dashboard = {
   summary: {
     count: 16,
     medianPrice: 600_000,
@@ -43,6 +45,14 @@ const dashboard = {
     millionDollarCount: 2,
     priceChangePercent: 10 as number | null,
     comparisonLabel: 'Jan–Dec 2025 vs Jan–Dec 2024',
+    comparisonUnavailableReason: null,
+    priceDistribution: {
+      min: 400_000,
+      lowerQuartile: 500_000,
+      median: 600_000,
+      upperQuartile: 700_000,
+      max: 1_000_000,
+    },
   },
   trend: [{ month: '2025-12', count: 16, medianPrice: 600_000, medianPsm: 6_000 }],
   towns: [{ town: 'BEDOK', count: 16, medianPrice: 600_000, medianPsm: 6_000 }],
@@ -62,10 +72,10 @@ function response(body: unknown, status = 200): Response {
 const fetchMock = vi.fn<typeof fetch>();
 let wrapper: VueWrapper | undefined;
 
-function serveDashboard(result = dashboard) {
+function serveDashboard(result = dashboard, metadata = meta) {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
-    if (url === '/api/meta') return response(meta);
+    if (url === '/api/meta') return response(metadata);
     if (url.startsWith('/api/dashboard?')) {
       const page = Number(new URL(url, window.location.origin).searchParams.get('page'));
       return response({ ...result, pagination: { ...result.pagination, page } });
@@ -108,6 +118,8 @@ describe('HDB explorer', () => {
     expect(app.get('h1').text()).toContain('Home prices.');
     expect(app.get('.hero-note').text()).toContain('240,000 real transactions');
     expect(app.get('.metrics-grid').text()).toContain('S$600,000');
+    expect(app.get('.distribution-panel').text()).toContain('S$500,000');
+    expect(app.get('.distribution-panel').text()).toContain('S$700,000');
     expect(app.get('.insight-strip').text()).toContain('across these 16 transactions');
     expect(app.get('.address-button').text()).toContain('123 Bedok Nth Rd');
     expect(app.find('[role="status"]').exists()).toBe(false);
@@ -178,6 +190,8 @@ describe('HDB explorer', () => {
         medianPsm: 0,
         millionDollarCount: 0,
         priceChangePercent: null,
+        comparisonUnavailableReason: 'no_transactions',
+        priceDistribution: null,
       },
       trend: [],
       towns: [],
@@ -192,6 +206,7 @@ describe('HDB explorer', () => {
     expect(app.get('.export-button').attributes('disabled')).toBeDefined();
     expect(app.get('.chart-empty').text()).toContain('No monthly data');
     expect(app.get('.metric-value').text()).toBe('—');
+    expect(app.get('.distribution-empty').text()).toContain('No prices to summarise');
   });
 
   it('opens transaction details and restores focus when the dialog closes', async () => {
@@ -253,4 +268,78 @@ describe('HDB explorer', () => {
     expect(app.find('.dashboard-body').exists()).toBe(false);
     expect(app.find('[role="status"]').exists()).toBe(false);
   });
+  it('explains partial months and moves to a complete equal-length window while preserving other filters', async () => {
+    const currentMeta: Metadata = { ...meta, maxMonth: '2026-01', latestCompleteMonth: '2025-12' };
+    const partial: Dashboard = {
+      ...dashboard,
+      summary: {
+        ...dashboard.summary,
+        priceChangePercent: null,
+        comparisonUnavailableReason: 'incomplete_month',
+      },
+    };
+    window.history.replaceState(
+      null,
+      '',
+      '/?town=BEDOK&from=2025-02&to=2026-01&page=2&maxPrice=800000',
+    );
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input) === '/api/meta') return response(currentMeta);
+      const params = new URL(String(input), window.location.origin).searchParams;
+      const result = params.get('to') === '2026-01' ? partial : dashboard;
+      return response({
+        ...result,
+        pagination: { ...result.pagination, page: Number(params.get('page')) },
+      });
+    });
+    const app = await render();
+    expect(app.get('.coverage-note').text()).toContain('still in progress');
+    expect(app.get('.metric-caption').text()).toBe('Latest month is incomplete');
+    await buttonWithText('Use complete months').trigger('click');
+    await flushPromises();
+    const query = new URL(requests().at(-1)!, window.location.origin).searchParams;
+    expect(query.get('from')).toBe('2025-01');
+    expect(query.get('to')).toBe('2025-12');
+    expect(query.get('town')).toBe('BEDOK');
+    expect(query.get('maxPrice')).toBe('800000');
+    expect(query.get('page')).toBe('1');
+    expect(app.find('.coverage-note').exists()).toBe(false);
+  });
+  it('does not offer a complete-month shortcut when no closed month is covered', async () => {
+    serveDashboard(
+      {
+        ...dashboard,
+        summary: {
+          ...dashboard.summary,
+          priceChangePercent: null,
+          comparisonUnavailableReason: 'incomplete_month',
+        },
+      },
+      { ...meta, latestCompleteMonth: null },
+    );
+    const app = await render();
+    expect(app.find('.coverage-note').exists()).toBe(true);
+    expect(app.findAll('button').some((button) => button.text() === 'Use complete months')).toBe(
+      false,
+    );
+  });
+  it.each([
+    ['insufficient_coverage', 'Prior period outside data coverage'],
+    ['no_prior_transactions', 'No matching prior-period transactions'],
+  ] as const)(
+    'shows the specific reason %s for an unavailable comparison',
+    async (reason, message) => {
+      serveDashboard({
+        ...dashboard,
+        summary: {
+          ...dashboard.summary,
+          priceChangePercent: null,
+          comparisonUnavailableReason: reason,
+        },
+      });
+      const app = await render();
+      expect(app.get('.metric-caption').text()).toBe(message);
+      expect(app.find('.coverage-note').exists()).toBe(false);
+    },
+  );
 });

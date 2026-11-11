@@ -28,7 +28,13 @@ The checked-in CSV allows deterministic local startup and review when the extern
 
 Medians are calculated over all matched transactions. For an even record count, the median is the average of the two middle values. Price per square metre is calculated for each transaction before taking its median; dividing the median price by median floor area would be a different statistic. Dates refer to registration months and contain no day-level precision.
 
+The five-number price distribution uses every filtered transaction rather than a page of rows. Its minimum, lower quartile, median, upper quartile, and maximum are derived from one sorted price array; quartiles use the documented R-7 interpolation method. The median from that same distribution supplies the headline resale-price metric. Empty and constant samples have explicit rendering, and a visible note identifies cohorts below 30 records. The 30-record threshold is a usability cue, rather than a claim of statistical significance.
+
+The interpolation definition corresponds to [type 7 in the R statistics documentation](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/quantile.html). Other valid quartile conventions can produce different results on small datasets; this method is documented so reviewers can reproduce the numbers.
+
 Percentage movement compares a selected window with the immediately preceding window of equal calendar length and identical non-date filters. If the preceding window is not fully inside the snapshot, or has no matching transactions, comparison is unavailable. Selections including the Singapore calendar month of snapshot retrieval also omit the percentage because that month is incomplete. This avoids comparing unequal windows or presenting partial-month movement as a complete-period comparison. The interface exposes the available coverage.
+
+The API exposes a typed comparison reason separately from its human-readable label, so the UI does not parse message text to decide what to show. Metadata reports the latest closed month within coverage. A complete-month shortcut shifts the selected window to that boundary and retains all non-date filters. Shared calendar helpers keep the ingestion metadata, analysis, and interface consistent at Singapore month boundaries.
 
 Monthly price trends, town medians, flat-type summaries, million-dollar transaction counts, and median floor area describe the matching transactions. They are descriptive summaries, not a valuation model. Changes in the mix of flat sizes, towns, lease ages, and floors can change aggregate medians without representing the change in value of a comparable flat. HDB's source notes exclude some transactions that do not reflect full market prices and describe agreed resale prices as indicative.
 

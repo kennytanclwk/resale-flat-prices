@@ -1,4 +1,11 @@
-import type { Dashboard, Filters, Transaction } from '../shared/types.js';
+import type {
+  ComparisonUnavailableReason,
+  Dashboard,
+  Filters,
+  PriceDistribution,
+  Transaction,
+} from '../shared/types.js';
+import { indexMonth, monthIndex, singaporeMonth } from '../shared/months.js';
 import type { Repository } from './data.js';
 
 export function median(values: readonly number[]): number | null {
@@ -8,13 +15,23 @@ export function median(values: readonly number[]): number | null {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-export function monthIndex(month: string): number {
-  const [year, value] = month.split('-').map(Number);
-  return year * 12 + value - 1;
-}
-
-export function indexMonth(index: number): string {
-  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+export function describePrices(values: readonly number[]): PriceDistribution | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  // Linear interpolation at (n - 1) * p, also known as the R-7 quantile method.
+  const percentile = (p: number) => {
+    const index = (sorted.length - 1) * p;
+    const lower = Math.floor(index);
+    const upper = Math.ceil(index);
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+  };
+  return {
+    min: sorted[0],
+    lowerQuartile: percentile(0.25),
+    median: percentile(0.5),
+    upperQuartile: percentile(0.75),
+    max: sorted[sorted.length - 1],
+  };
 }
 
 export function filterTransactions(
@@ -65,18 +82,14 @@ export function sortTransactions(rows: readonly Transaction[], filters: Filters)
 
 export function dashboard(repository: Repository, filters: Filters): Dashboard {
   const rows = filterTransactions(repository.records, filters);
-  const medianPrice = median(rows.map((row) => row.resalePrice));
+  const priceDistribution = describePrices(rows.map((row) => row.resalePrice));
+  const medianPrice = priceDistribution?.median ?? null;
   const from = filters.from || repository.meta.minMonth;
   const to = filters.to || repository.meta.maxMonth;
   const length = monthIndex(to) - monthIndex(from) + 1;
   const previousFrom = indexMonth(monthIndex(from) - length);
   const previousTo = indexMonth(monthIndex(from) - 1);
-  const retrievalParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Singapore',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date(repository.meta.source.retrievedAt));
-  const retrievalMonth = `${retrievalParts.find((part) => part.type === 'year')!.value}-${retrievalParts.find((part) => part.type === 'month')!.value}`;
+  const retrievalMonth = singaporeMonth(repository.meta.source.retrievedAt);
   // A snapshot retrieved during a month cannot establish that month's completeness.
   const includesIncompleteMonth = to >= retrievalMonth;
   const completeComparison =
@@ -91,6 +104,15 @@ export function dashboard(repository: Repository, filters: Filters): Dashboard {
     medianPrice !== null && priorMedian !== null && priorMedian > 0
       ? ((medianPrice - priorMedian) / priorMedian) * 100
       : null;
+  const comparisonUnavailableReason: ComparisonUnavailableReason | null = !rows.length
+    ? 'no_transactions'
+    : includesIncompleteMonth
+      ? 'incomplete_month'
+      : !completeComparison
+        ? 'insufficient_coverage'
+        : priorMedian === null
+          ? 'no_prior_transactions'
+          : null;
   const towns = groupBy(rows, (row) => row.town)
     .map(({ name, ...rest }) => ({ town: name, ...rest }))
     .sort((a, b) => b.medianPrice - a.medianPrice || a.town.localeCompare(b.town));
@@ -128,6 +150,8 @@ export function dashboard(repository: Repository, filters: Filters): Dashboard {
       millionDollarCount,
       priceChangePercent: change,
       comparisonLabel: `vs ${previousFrom} to ${previousTo}${includesIncompleteMonth ? ' (latest month incomplete)' : change === null ? ' (comparison unavailable)' : ''}`,
+      comparisonUnavailableReason,
+      priceDistribution,
     },
     trend,
     towns,

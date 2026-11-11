@@ -29,6 +29,7 @@ export interface Metadata {
   flatTypes: string[];
   minMonth: string;
   maxMonth: string;
+  latestCompleteMonth: string | null;
   totalRecords: number;
   source: SourceMetadata;
 }
@@ -47,6 +48,20 @@ export interface Filters {
   order: 'asc' | 'desc';
 }
 
+export interface PriceDistribution {
+  min: number;
+  lowerQuartile: number;
+  median: number;
+  upperQuartile: number;
+  max: number;
+}
+
+export type ComparisonUnavailableReason =
+  | 'no_transactions'
+  | 'incomplete_month'
+  | 'insufficient_coverage'
+  | 'no_prior_transactions';
+
 export interface Dashboard {
   summary: {
     count: number;
@@ -56,6 +71,8 @@ export interface Dashboard {
     millionDollarCount: number;
     priceChangePercent: number | null;
     comparisonLabel: string;
+    comparisonUnavailableReason: ComparisonUnavailableReason | null;
+    priceDistribution: PriceDistribution | null;
   };
   trend: { month: string; count: number; medianPrice: number; medianPsm: number }[];
   towns: { town: string; count: number; medianPrice: number; medianPsm: number }[];

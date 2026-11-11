@@ -30,10 +30,12 @@ Open **http://localhost:3001**. Express serves the built Vue application and API
 
 - Town, flat type, registration month, price range, and block/street search. Filters apply consistently to all summaries, charts, transactions, and CSV exports.
 - Median resale price, median price per square metre, registered transaction volume, and million-dollar sales.
+- A five-number price distribution: minimum, lower quartile, median, upper quartile, and maximum, with an accessible graphic and visible small-sample context.
 - An interactive monthly trend chart with keyboard navigation and price/per-m² controls.
 - Town rankings, transaction mix by flat type, sortable pagination, and full transaction details.
 - Shareable filter URLs, filtered CSV downloads, loading/error/empty states, and responsive layouts.
 - An in-app explanation of the data, calculations, and limitations.
+- Specific reasons when period comparisons are unavailable, plus a **Use complete months** shortcut that keeps town, flat type, search, and budget filters.
 
 ## Data and refresh
 
@@ -51,7 +53,11 @@ The refresh command uses the official [initiate-download and poll-download APIs]
 
 The median is the middle sorted value, or the mean of the two central values for an even count. Median price per m² is the median of **each transaction's price divided by its area**. It is not the ratio of the two group medians. Million-dollar sales include prices exactly equal to S$1,000,000.
 
+The price-distribution panel calculates the five-number summary across **all matching transactions**, independently of the displayed table page. Quartiles use linear interpolation at index `(n - 1) × p` in ascending prices (R-7), where `p` is 0.25 or 0.75. For example, prices S$400,000, S$600,000, S$800,000, and S$1,000,000 have quartiles S$550,000 and S$850,000. Percentiles can therefore be values between observed sales. Empty selections have no distribution, and groups below 30 transactions show an explicit small-sample note.
+
 Period change compares the selected window against the immediately preceding window with the same number of calendar months and the same non-date filters. It is unavailable if a complete comparison window falls outside the snapshot, has no matching transactions, or the selection includes the Singapore calendar month in which the snapshot was retrieved. That latest month is treated as incomplete. Monthly summaries use registration month and show only months with matching transactions. Horizontal chart spacing follows elapsed calendar months. Town rankings and flat-type summaries use matching transactions in the selected window.
+
+The complete-month shortcut ends at the latest closed Singapore calendar month within the snapshot's observed coverage, rather than today's date. It preserves the selected number of months where coverage permits, clamps the start to the earliest covered month, and resets pagination while preserving all non-date filters. A closed calendar month does not guarantee that HDB will never revise or backfill its records.
 
 These summaries describe the homes that sold. Changes in location, size, model, floor, and remaining lease affect the mix, so a median change is **not a constant-quality price index**. Small samples may be volatile. The latest month may be incomplete. Remaining lease describes the transaction date. HDB excludes certain transactions that may not represent full market prices, such as transfers between relatives or part shares. The source itself describes prices as indicative.
 

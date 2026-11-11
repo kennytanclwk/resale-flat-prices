@@ -7,7 +7,7 @@ Development base URL: `http://localhost:3001`. Production serves the frontend an
 | Method and path | Description |
 | --- | --- |
 | `GET /api/health` | Process readiness, including loaded snapshot status. Used by container and load-balancer health checks. |
-| `GET /api/meta` | Available towns/flat types, record count, date coverage, dataset ID, source URL, and retrieval timestamp. |
+| `GET /api/meta` | Available towns/flat types, record count, date coverage, `latestCompleteMonth`, dataset ID, source URL, and retrieval timestamp. |
 | `GET /api/dashboard` | Filtered summary, monthly medians, town comparisons, flat-type mix, insights, and one page of transactions. |
 | `GET /api/export` | CSV of the filtered transactions, including all pages. Uses the same filters and sorting as the dashboard. |
 
@@ -40,7 +40,8 @@ The dashboard returns these fields (the shared TypeScript contract is in `shared
 
 ```text
 summary        count, medianPrice, medianPsm, medianArea, millionDollarCount,
-               priceChangePercent, comparisonLabel
+               priceChangePercent, comparisonLabel, comparisonUnavailableReason,
+               priceDistribution: { min, lowerQuartile, median, upperQuartile, max } | null
 trend          month, count, medianPrice, medianPsm for each matching month
 towns          town, count, medianPrice, medianPsm
 flatTypes      flatType, count, medianPrice
@@ -50,5 +51,18 @@ insights       descriptions derived from the filtered data
 ```
 
 Prices and areas are JSON numbers; display rounding happens in the frontend. `priceChangePercent` is `null` when a fair comparison cannot be calculated. An empty query result is a successful response with zero count and empty arrays. The frontend renders unavailable medians as an em dash.
+
+`priceDistribution` uses every matching transaction, independently of `page` and `pageSize`. Its quartiles use linear interpolation at `(n - 1) × p` (R-7); an empty selection returns `null`. A single transaction or constant-price selection returns the same value for all five statistics.
+
+`comparisonUnavailableReason` is `null` when the comparison is available. Otherwise it is one of:
+
+| Value | Meaning |
+| --- | --- |
+| `no_transactions` | The selected filters have no matching transactions. |
+| `incomplete_month` | The selection includes the snapshot retrieval month in Singapore, or a later month. |
+| `insufficient_coverage` | The complete selected/prior windows are not within the snapshot's coverage. |
+| `no_prior_transactions` | The preceding covered window has no transactions matching the same non-date filters. |
+
+`latestCompleteMonth` is the latest closed Singapore calendar month within observed coverage, or `null` if no closed month is covered. It is calculated from the snapshot retrieval timestamp, not server wall-clock time, so refreshing the snapshot is the only way to move that boundary. It does not guarantee that the publisher will never revise historical records.
 
 CSV exports use standard quoting and protect spreadsheet consumers against formula interpretation. HTTP errors carry a controlled JSON message; callers should inspect the HTTP status before consuming the result. Unknown API routes are errors, rather than the SPA HTML fallback.

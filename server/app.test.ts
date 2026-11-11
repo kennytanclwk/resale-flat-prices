@@ -2,7 +2,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 import { createRepository, parseTransactions } from './data.js';
-import { dashboard, median } from './analytics.js';
+import { dashboard, describePrices, median } from './analytics.js';
 import type { Filters, SourceMetadata, Transaction } from '../shared/types.js';
 
 const source: SourceMetadata = {
@@ -55,6 +55,30 @@ describe('analytics', () => {
     expect(median([4, 9, 5])).toBe(5);
     expect(median([])).toBeNull();
   });
+  it('calculates interpolated quartiles without mutating the source prices', () => {
+    const prices = [400, 100, 300, 200];
+    expect(describePrices(prices)).toEqual({
+      min: 100,
+      lowerQuartile: 175,
+      median: 250,
+      upperQuartile: 325,
+      max: 400,
+    });
+    expect(prices).toEqual([400, 100, 300, 200]);
+    expect(describePrices([100, 100, 1000])).toEqual({
+      min: 100,
+      lowerQuartile: 100,
+      median: 100,
+      upperQuartile: 550,
+      max: 1000,
+    });
+  });
+  it('handles empty, single-price, and constant-price distributions', () => {
+    expect(describePrices([])).toBeNull();
+    const constant = { min: 200, lowerQuartile: 200, median: 200, upperQuartile: 200, max: 200 };
+    expect(describePrices([200])).toEqual(constant);
+    expect(describePrices([200, 200, 200])).toEqual(constant);
+  });
   it('compares equal-length prior periods using the same town filter', () => {
     const data = dashboard(repository, {
       ...filters,
@@ -66,18 +90,24 @@ describe('analytics', () => {
     expect(data.summary.priceChangePercent).toBe(80);
     expect(data.summary.comparisonLabel).toBe('vs 2024-01 to 2024-02');
     expect(data.summary.millionDollarCount).toBe(1);
+    expect(data.summary.comparisonUnavailableReason).toBeNull();
   });
   it('does not claim growth against a partial comparison window', () => {
     expect(
       dashboard(repository, { ...filters, from: '2024-02', to: '2024-04' }).summary
         .priceChangePercent,
     ).toBeNull();
+    expect(
+      dashboard(repository, { ...filters, from: '2024-02', to: '2024-04' }).summary
+        .comparisonUnavailableReason,
+    ).toBe('insufficient_coverage');
   });
   it('withholds comparisons when the selected period includes the snapshot retrieval month', () => {
     const current = createRepository(rows, { ...source, retrievedAt: '2024-04-10T00:00:00Z' });
     const result = dashboard(current, { ...filters, from: '2024-03', to: '2024-04' });
     expect(result.summary.priceChangePercent).toBeNull();
     expect(result.summary.comparisonLabel).toContain('latest month incomplete');
+    expect(result.summary.comparisonUnavailableReason).toBe('incomplete_month');
   });
   it('uses Singapore calendar months when determining completeness at a UTC month boundary', () => {
     const current = createRepository(rows, { ...source, retrievedAt: '2024-03-31T16:00:00Z' });
@@ -99,6 +129,27 @@ describe('analytics', () => {
     );
     expect(dashboard(custom, filters).summary.medianPsm).toBe(7_000);
   });
+  it('explains when the preceding covered period has no transactions matching the same filters', () => {
+    const result = dashboard(repository, {
+      ...filters,
+      town: 'TAMPINES',
+      from: '2024-04',
+      to: '2024-04',
+    });
+    expect(result.summary.priceChangePercent).toBeNull();
+    expect(result.summary.comparisonUnavailableReason).toBe('no_prior_transactions');
+  });
+  it('finds the latest closed month within actual coverage using Singapore time', () => {
+    expect(repository.meta.latestCompleteMonth).toBe('2024-04');
+    expect(
+      createRepository(rows, { ...source, retrievedAt: '2024-03-31T16:00:00Z' }).meta
+        .latestCompleteMonth,
+    ).toBe('2024-03');
+    expect(
+      createRepository([base], { ...source, retrievedAt: '2024-01-15T00:00:00Z' }).meta
+        .latestCompleteMonth,
+    ).toBeNull();
+  });
 });
 
 describe('HTTP API', () => {
@@ -107,8 +158,31 @@ describe('HTTP API', () => {
     expect(res.body.totalRecords).toBe(5);
     expect(res.body.minMonth).toBe('2024-01');
     expect(res.body.source.mode).toBe('snapshot');
+    expect(res.body.latestCompleteMonth).toBe('2024-04');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     await request(app).get('/api/health').expect(200);
+  });
+  it('summarises the full filtered price distribution independently of pagination', async () => {
+    const res = await request(app).get('/api/dashboard?town=BEDOK&pageSize=1').expect(200);
+    expect(res.body.transactions).toHaveLength(1);
+    expect(res.body.summary.count).toBe(4);
+    expect(res.body.summary.priceDistribution).toEqual({
+      min: 400_000,
+      lowerQuartile: 550_000,
+      median: 700_000,
+      upperQuartile: 850_000,
+      max: 1_000_000,
+    });
+    const narrowed = await request(app)
+      .get('/api/dashboard?town=BEDOK&minPrice=600000&maxPrice=800000')
+      .expect(200);
+    expect(narrowed.body.summary.priceDistribution).toEqual({
+      min: 600_000,
+      lowerQuartile: 650_000,
+      median: 700_000,
+      upperQuartile: 750_000,
+      max: 800_000,
+    });
   });
   it('filters and paginates consistently, including out-of-range pages', async () => {
     const res = await request(app)
@@ -140,6 +214,8 @@ describe('HTTP API', () => {
     expect(res.body.summary.medianPrice).toBeNull();
     expect(res.body.transactions).toEqual([]);
     expect(res.body.pagination.total).toBe(0);
+    expect(res.body.summary.priceDistribution).toBeNull();
+    expect(res.body.summary.comparisonUnavailableReason).toBe('no_transactions');
   });
   it('exports every matching row beyond the current page and protects spreadsheet formula cells', async () => {
     const malicious = createApp(

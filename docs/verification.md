@@ -22,3 +22,21 @@ The package manager's automatic dependency check sees different store paths insi
 The production process was started using the compiled entrypoint, and initial browser verification used that same process. Development mode was then verified outside the restricted shell, where the `tsx` helper can access the OS account information it needs. The local development preview uses port 5173 and the API uses port 3001.
 
 Docker image execution and AWS deployment were not run: this environment has no Docker executable and the assessment does not require an AWS deployment. Terraform validation checks configuration/schema, rather than account permissions, service quotas, or successful deployment.
+
+## Local analysis improvements — 11 November 2026
+
+The price-distribution and comparison-context changes were checked separately from the original submission:
+
+| Check | Result |
+| --- | --- |
+| Automated tests | 55 tests passed across 5 files |
+| Vue and backend type checks | Passed |
+| Production build | Passed |
+| Full-cohort distribution | Confirmed independent of table page and page size |
+| Real-data complete period | Nov 2025–Oct 2026: 25,485 records; minimum S$233,000, lower quartile S$512,888, median S$631,000, upper quartile S$785,000, maximum S$1,818,000 |
+| Comparison availability | Dec 2025–Nov 2026 reports `incomplete_month`; Nov 2025–Oct 2026 reports an available comparison |
+| Closed-month metadata | `latestCompleteMonth` is `2026-10` for the current snapshot |
+
+Added tests cover interpolated quartiles, ties, empty and single-price cohorts, filtering before distribution calculation, pagination independence, Singapore month boundaries, specific comparison reasons, and the complete-month shortcut retaining non-date filters. Component tests check accessible descriptions, finite constant-price graphics, empty states, and small-sample notes.
+
+Browser automation was unavailable during this local verification, so the new visual layout was not verified in a live browser. Existing API endpoints were smoke-tested locally. Infrastructure was unchanged and was not revalidated as part of these improvements. These results were recorded before committing and publishing the changes.
