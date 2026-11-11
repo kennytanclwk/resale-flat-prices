@@ -105,4 +105,4 @@ Dockerfile             Multi-stage production image, non-root runtime
 
 ## Submission
 
-The repository contains the implementation, real data snapshot, automated tests, documentation, and IaC. Before submitting, create a private repository on your preferred Git host, push this source, and grant the reviewers access. No remote repository or reviewer identities were provided, so remote publication and reviewer invitations are left to the repository owner.
+The implementation, real data snapshot, automated tests, documentation, and IaC are maintained in [kennytanclwk/resale-flat-prices](https://github.com/kennytanclwk/resale-flat-prices) on the `main` branch. Submit this repository link for review. If the repository is private, grant the reviewers access before submission; no reviewer identities have been provided.
